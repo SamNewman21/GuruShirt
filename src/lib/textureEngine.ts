@@ -1,6 +1,8 @@
 import {
+  DEFAULT_GARMENT_FIT,
   DesignLayer,
   FabricType,
+  GARMENT_CATALOG,
   GarmentPanelId,
   GarmentState,
   PANEL_UV_MAP,
@@ -436,6 +438,48 @@ export function renderDesignLayerInPanel(
   ctx.rotate((layer.rotation * Math.PI) / 180);
   ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
 
+  const finish = layer.printFinish || "screenprint";
+  const drawSingleTile = (w: number, h: number) => {
+    applyCropPath(ctx, w, h, layer.crop);
+    if (finish === "puff-print") {
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.58)";
+      ctx.shadowBlur = Math.max(4, w * 0.025);
+      ctx.shadowOffsetX = Math.max(1.5, w * 0.008);
+      ctx.shadowOffsetY = Math.max(2.5, h * 0.014);
+      ctx.drawImage(source, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    } else if (finish === "embroidery") {
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
+      ctx.shadowBlur = 3;
+      ctx.shadowOffsetY = 2;
+      ctx.drawImage(source, -w / 2, -h / 2, w, h);
+      ctx.restore();
+
+      // Subtle satin thread stitch lines over the graphic
+      ctx.save();
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      ctx.lineWidth = 1;
+      const step = 3.5;
+      for (let sy = -h / 2; sy <= h / 2; sy += step) {
+        ctx.beginPath();
+        ctx.moveTo(-w / 2, sy);
+        ctx.lineTo(w / 2, sy + 1.5);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (finish === "vintage-cracked") {
+      ctx.save();
+      ctx.globalAlpha = layer.opacity * 0.84;
+      ctx.drawImage(source, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(source, -w / 2, -h / 2, w, h);
+    }
+  };
+
   const mp = layer.multiplyPattern;
   if (mp && mp.enabled && (mp.cols > 1 || mp.rows > 1)) {
     const cols = Math.max(1, Math.min(16, mp.cols));
@@ -477,15 +521,13 @@ export function renderDesignLayerInPanel(
 
         ctx.save();
         ctx.translate(ox, oy);
-        applyCropPath(ctx, tileW, tileH, layer.crop);
-        ctx.drawImage(source, -tileW / 2, -tileH / 2, tileW, tileH);
+        drawSingleTile(tileW, tileH);
         ctx.restore();
       }
     }
   } else {
     ctx.save();
-    applyCropPath(ctx, drawW, drawH, layer.crop);
-    ctx.drawImage(source, -drawW / 2, -drawH / 2, drawW, drawH);
+    drawSingleTile(drawW, drawH);
     ctx.restore();
   }
 
@@ -725,4 +767,202 @@ export function renderMasterUVTexture(
       ctx.restore();
     }
   });
+}
+
+/**
+ * Generates a high-resolution Production Tech Pack Spec Sheet PNG DataURL containing:
+ * - Garment Catalog Title, Fabric Spec, Fit Tailoring Measurements & Date
+ * - Full Cut-and-Sew 2048x2048 UV Pattern Map Preview
+ * - Panel Dye Color Swatches + Stitch Thread Callout
+ * - Layer-by-Layer Print & Ink Specification Table (Finish, Stencil/Hex, Placement, Size)
+ */
+export function renderTechPackSpecSheet(
+  garment: GarmentState,
+  layers: DesignLayer[],
+  masterCanvas: HTMLCanvasElement
+): string {
+  const sheet = document.createElement("canvas");
+  sheet.width = 2400;
+  sheet.height = 1600;
+  const ctx = sheet.getContext("2d");
+  if (!ctx) return "";
+
+  const catalog = GARMENT_CATALOG[garment.garmentType];
+  const fit = garment.fit || DEFAULT_GARMENT_FIT;
+
+  // Dark blueprint background
+  ctx.fillStyle = "#0b0e14";
+  ctx.fillRect(0, 0, sheet.width, sheet.height);
+
+  // Outer technical border
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(32, 32, sheet.width - 64, sheet.height - 64);
+
+  // Header Block
+  ctx.fillStyle = "#111622";
+  ctx.fillRect(34, 34, sheet.width - 68, 130);
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(34, 164);
+  ctx.lineTo(sheet.width - 34, 164);
+  ctx.stroke();
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "900 36px Inter, system-ui, sans-serif";
+  ctx.fillText("GURUSHIRT // PRODUCTION TECH PACK SPEC SHEET", 68, 92);
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "600 20px Inter, system-ui, sans-serif";
+  ctx.fillText(
+    `GARMENT: ${catalog.name.toUpperCase()}   |   FABRIC: ${garment.fabric.toUpperCase()}   |   DATE: ${new Date().toLocaleDateString()}`,
+    68,
+    134
+  );
+
+  // Left Column: Cut & Sew Pattern Map (1320 x 1320)
+  const mapX = 68;
+  const mapY = 200;
+  const mapSize = 1320;
+  ctx.fillStyle = "#080a0f";
+  ctx.fillRect(mapX, mapY, mapSize, mapSize);
+  ctx.drawImage(masterCanvas, mapX, mapY, mapSize, mapSize);
+  ctx.strokeStyle = "#475569";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+
+  // Panel Labels overlaid on UV map
+  (Object.keys(PANEL_UV_MAP) as GarmentPanelId[]).forEach((pid) => {
+    const uv = PANEL_UV_MAP[pid];
+    const lx = mapX + uv.uMin * mapSize + 14;
+    const ly = mapY + uv.vMin * mapSize + 28;
+    ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+    ctx.fillRect(lx - 8, ly - 20, 210, 28);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "700 15px Inter, system-ui, sans-serif";
+    ctx.fillText(
+      `${catalog.panelLabels[pid].label.toUpperCase()} (${garment.panelColors[pid].toUpperCase()})`,
+      lx,
+      ly
+    );
+  });
+
+  // Right Column: Specifications (x = 1430 .. 2330)
+  const rx = 1430;
+  let ry = 225;
+
+  // Section 1: 3D Tailoring & Fit Measurements
+  ctx.fillStyle = "#818cf8";
+  ctx.font = "800 22px Inter, system-ui, sans-serif";
+  ctx.fillText("1. 3D CUT & SEW TAILORING PROFILE", rx, ry);
+  ry += 38;
+
+  const fitSpecs = [
+    `Body Width / Boxiness: ${Math.round(fit.bodyWidth * 100)}% (${
+      fit.bodyWidth > 1.06 ? "Boxy Oversized" : fit.bodyWidth < 0.94 ? "Slim Fit" : "Standard Fit"
+    })`,
+    `Garment Length / Drop: ${Math.round(fit.bodyLength * 100)}% (${
+      fit.bodyLength < 0.93 ? "Cropped" : fit.bodyLength > 1.06 ? "Longline" : "Regular Length"
+    })`,
+    `Sleeve Cut & Extension: ${Math.round(fit.sleeveLength * 100)}%`,
+    `Collar / Rib Weight: ${Math.round(fit.collarWeight * 100)}%`,
+    `Fabric Drape & Tension: ${Math.round(fit.drapeFolds * 100)}%`,
+    `3D Model Source: ${garment.customGlbName || `public/models/${garment.garmentType}.glb`}`,
+  ];
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "500 18px Inter, system-ui, sans-serif";
+  for (const line of fitSpecs) {
+    ctx.fillText(`•  ${line}`, rx, ry);
+    ry += 32;
+  }
+
+  ry += 28;
+  // Section 2: Panel Dye & Stitch Swatches
+  ctx.fillStyle = "#818cf8";
+  ctx.font = "800 22px Inter, system-ui, sans-serif";
+  ctx.fillText("2. CUT & SEW PANEL DYE SWATCHES", rx, ry);
+  ry += 36;
+
+  (Object.keys(PANEL_UV_MAP) as GarmentPanelId[]).forEach((pid) => {
+    const hex = garment.panelColors[pid];
+    ctx.fillStyle = hex;
+    ctx.fillRect(rx, ry - 20, 32, 24);
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(rx, ry - 20, 32, 24);
+
+    ctx.fillStyle = "#f1f5f9";
+    ctx.font = "600 17px Inter, system-ui, sans-serif";
+    ctx.fillText(
+      `${catalog.panelLabels[pid].label}: ${hex.toUpperCase()}`,
+      rx + 46,
+      ry - 2
+    );
+    ry += 34;
+  });
+
+  // Stitch Thread Callout
+  ctx.fillStyle = garment.stitchColor;
+  ctx.fillRect(rx, ry - 20, 32, 24);
+  ctx.strokeStyle = "#cbd5e1";
+  ctx.strokeRect(rx, ry - 20, 32, 24);
+  ctx.fillStyle = "#f1f5f9";
+  ctx.fillText(
+    `Seam Top-Stitch Thread: ${garment.stitchColor.toUpperCase()} (${
+      garment.showSeams ? "Visible" : "Hidden"
+    })`,
+    rx + 46,
+    ry - 2
+  );
+  ry += 56;
+
+  // Section 3: Graphic & Ink Layers Breakdown
+  ctx.fillStyle = "#818cf8";
+  ctx.font = "800 22px Inter, system-ui, sans-serif";
+  ctx.fillText(`3. GRAPHIC & INK LAYERS (${layers.length})`, rx, ry);
+  ry += 38;
+
+  if (layers.length === 0) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "500 17px Inter, system-ui, sans-serif";
+    ctx.fillText("Blank garment (no active graphic layers).", rx, ry);
+  } else {
+    layers.slice(0, 10).forEach((layer, idx) => {
+      ctx.fillStyle = "#161d2a";
+      ctx.fillRect(rx, ry - 24, 880, 74);
+      ctx.strokeStyle = "#2dd4bf44";
+      ctx.strokeRect(rx, ry - 24, 880, 74);
+
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "700 17px Inter, system-ui, sans-serif";
+      const finishLabel = (layer.printFinish || "screenprint").toUpperCase();
+      const panelLabel = catalog.panelLabels[layer.panel].shortLabel.toUpperCase();
+      ctx.fillText(
+        `#${idx + 1}  ${layer.name}  [${panelLabel}]  —  FINISH: ${finishLabel}`,
+        rx + 16,
+        ry + 2
+      );
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "500 15px Inter, system-ui, sans-serif";
+      const patternInfo = layer.multiplyPattern?.enabled
+        ? `Pattern ${layer.multiplyPattern.cols}×${layer.multiplyPattern.rows}`
+        : `Single (${Math.round(layer.width * 100)}% × ${Math.round(layer.height * 100)}%)`;
+      const inkInfo = layer.singleColorMode
+        ? `1-Color Stencil (${layer.singleColorHex.toUpperCase()})`
+        : layer.tintEnabled
+        ? `Tint (${layer.tintHex.toUpperCase()})`
+        : "Full Color";
+      ctx.fillText(
+        `Scale: ${patternInfo}   |   Ink: ${inkInfo}   |   Crop: ${layer.crop.shape.toUpperCase()}   |   Rot: ${Math.round(layer.rotation)}°`,
+        rx + 16,
+        ry + 32
+      );
+      ry += 86;
+    });
+  }
+
+  return sheet.toDataURL("image/png");
 }

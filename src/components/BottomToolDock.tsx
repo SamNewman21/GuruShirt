@@ -4,14 +4,17 @@ import React, { useState } from "react";
 import {
   BlendModeType,
   CropShapeType,
+  DEFAULT_GARMENT_FIT,
   DesignLayer,
   FabricType,
   GARMENT_CATALOG,
+  GarmentFitConfig,
   GarmentPanelId,
   GarmentState,
   GarmentType,
   getPanelLabel,
   PANEL_UV_MAP,
+  PrintFinishType,
   TextLayerConfig,
   UploadedAsset,
   ViewMode,
@@ -92,6 +95,8 @@ interface BottomToolDockProps {
   onUndo: () => void;
   onRedo: () => void;
   onExportSpec: () => void;
+  onExportGlb?: () => void;
+  onExportTechPack?: () => void;
 }
 
 const PRESET_SWATCHES = [
@@ -146,8 +151,18 @@ export default function BottomToolDock({
   onUndo,
   onRedo,
   onExportSpec,
+  onExportGlb,
+  onExportTechPack,
 }: BottomToolDockProps) {
   const [openTab, setOpenTab] = useState<BottomDrawerTab>(null);
+  const glbInputRef = React.useRef<HTMLInputElement | null>(null);
+  const currentFit: GarmentFitConfig = garment.fit || DEFAULT_GARMENT_FIT;
+
+  const updateFit = (patch: Partial<GarmentFitConfig>) => {
+    onUpdateGarment({
+      fit: { ...currentFit, ...patch },
+    });
+  };
   const [lockAspect, setLockAspect] = useState(true);
   const [wardrobeName, setWardrobeName] = useState("");
   const [wardrobeFilter, setWardrobeFilter] = useState<GarmentType | "all">(
@@ -1013,6 +1028,43 @@ export default function BottomToolDock({
                         </button>
                       ))}
                     </div>
+
+                    {/* Phase 3: 3D Print Finish & Surface Relief */}
+                    <div className="pt-1 space-y-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                        3D Ink Surface Finish
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(
+                          [
+                            { id: "screenprint", label: "Screenprint" },
+                            { id: "puff-print", label: "3D Puff Print" },
+                            { id: "embroidery", label: "Embroidery" },
+                            { id: "vintage-cracked", label: "Vintage Wash" },
+                          ] as { id: PrintFinishType; label: string }[]
+                        ).map((pf) => {
+                          const activeFinish =
+                            selectedLayer.printFinish || "screenprint";
+                          return (
+                            <button
+                              key={pf.id}
+                              onClick={() =>
+                                onUpdateLayer(selectedLayer.id, {
+                                  printFinish: pf.id,
+                                })
+                              }
+                              className={`p-1.5 rounded-lg text-[11px] font-semibold border ${
+                                activeFinish === pf.id
+                                  ? "bg-emerald-600/25 border-emerald-500 text-emerald-200"
+                                  : "bg-studio-surface border-studio-border text-slate-300 hover:text-white"
+                              }`}
+                            >
+                              {pf.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1431,6 +1483,241 @@ export default function BottomToolDock({
                     </div>
                   </div>
                 </div>
+
+                {/* Phase 3: Custom 3D Tailoring Sculptor & .GLB Model Pipeline */}
+                <div className="md:col-span-12 pt-3 border-t border-studio-border grid grid-cols-1 md:grid-cols-12 gap-5">
+                  {/* Live 3D Silhouette & Cut-and-Sew Tailoring */}
+                  <div className="md:col-span-8 p-3 rounded-xl bg-studio-surface border border-studio-border space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Box className="w-4 h-4 text-indigo-400" />
+                        3D Cut & Sew Tailoring (Sculpt Live 3D Garment Shape)
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {(
+                          [
+                            {
+                              label: "Standard Fit",
+                              fit: DEFAULT_GARMENT_FIT,
+                            },
+                            {
+                              label: "Boxy Oversized",
+                              fit: {
+                                bodyWidth: 1.18,
+                                bodyLength: 1.04,
+                                sleeveLength: 1.2,
+                                collarWeight: 1.25,
+                                drapeFolds: 0.75,
+                              },
+                            },
+                            {
+                              label: "Cropped Street",
+                              fit: {
+                                bodyWidth: 1.14,
+                                bodyLength: 0.86,
+                                sleeveLength: 1.12,
+                                collarWeight: 1.2,
+                                drapeFolds: 0.55,
+                              },
+                            },
+                            {
+                              label: "Athletic Slim",
+                              fit: {
+                                bodyWidth: 0.9,
+                                bodyLength: 0.98,
+                                sleeveLength: 0.88,
+                                collarWeight: 0.9,
+                                drapeFolds: 0.3,
+                              },
+                            },
+                          ] as const
+                        ).map((preset) => (
+                          <button
+                            key={preset.label}
+                            onClick={() =>
+                              onUpdateGarment({ fit: { ...preset.fit } })
+                            }
+                            className="px-2 py-1 rounded text-[11px] font-medium bg-studio-bg hover:bg-slate-700 border border-studio-border text-slate-300 hover:text-white"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      <div>
+                        <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                          <span>Width / Boxy</span>
+                          <span>{Math.round(currentFit.bodyWidth * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.85}
+                          max={1.25}
+                          step={0.02}
+                          value={currentFit.bodyWidth}
+                          onChange={(e) =>
+                            updateFit({
+                              bodyWidth: parseFloat(e.target.value),
+                            })
+                          }
+                          className="w-full accent-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                          <span>Length / Crop</span>
+                          <span>
+                            {Math.round(currentFit.bodyLength * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.82}
+                          max={1.18}
+                          step={0.02}
+                          value={currentFit.bodyLength}
+                          onChange={(e) =>
+                            updateFit({
+                              bodyLength: parseFloat(e.target.value),
+                            })
+                          }
+                          className="w-full accent-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                          <span>Sleeve Cut</span>
+                          <span>
+                            {Math.round(currentFit.sleeveLength * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.72}
+                          max={1.28}
+                          step={0.02}
+                          value={currentFit.sleeveLength}
+                          onChange={(e) =>
+                            updateFit({
+                              sleeveLength: parseFloat(e.target.value),
+                            })
+                          }
+                          className="w-full accent-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                          <span>Collar Rib</span>
+                          <span>
+                            {Math.round(currentFit.collarWeight * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.75}
+                          max={1.45}
+                          step={0.05}
+                          value={currentFit.collarWeight}
+                          onChange={(e) =>
+                            updateFit({
+                              collarWeight: parseFloat(e.target.value),
+                            })
+                          }
+                          className="w-full accent-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[10px] text-slate-300 mb-0.5">
+                          <span>Cloth Drape</span>
+                          <span>
+                            {Math.round(currentFit.drapeFolds * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={currentFit.drapeFolds}
+                          onChange={(e) =>
+                            updateFit({
+                              drapeFolds: parseFloat(e.target.value),
+                            })
+                          }
+                          className="w-full accent-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Custom .GLB 3D File Generator & Importer */}
+                  <div className="md:col-span-4 p-3 rounded-xl bg-studio-surface border border-studio-border flex flex-col justify-between space-y-2">
+                    <div>
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Box className="w-4 h-4 text-emerald-400" />
+                        .GLB 3D Clothing File Studio
+                      </span>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Active 3D Model:{" "}
+                        <span className="text-slate-200 font-mono">
+                          {garment.customGlbName ||
+                            `models/${garment.garmentType}.glb`}
+                        </span>
+                      </p>
+                    </div>
+
+                    <input
+                      ref={glbInputRef}
+                      type="file"
+                      accept=".glb,.gltf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const objUrl = URL.createObjectURL(file);
+                        onUpdateGarment({
+                          customGlbUrl: objUrl,
+                          customGlbName: file.name,
+                        });
+                        e.target.value = "";
+                      }}
+                    />
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {onExportGlb && (
+                        <button
+                          onClick={onExportGlb}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Export .GLB
+                        </button>
+                      )}
+                      <button
+                        onClick={() => glbInputRef.current?.click()}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-studio-bg hover:bg-slate-700 border border-studio-border text-slate-200 text-xs font-medium"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        Load .GLB
+                      </button>
+                      {garment.customGlbUrl && (
+                        <button
+                          onClick={() =>
+                            onUpdateGarment({
+                              customGlbUrl: undefined,
+                              customGlbName: undefined,
+                            })
+                          }
+                          className="px-2 py-1.5 rounded-lg bg-rose-500/20 text-rose-300 text-xs font-medium"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1702,6 +1989,26 @@ export default function BottomToolDock({
             <ImagePlus className="w-3.5 h-3.5" />
             Import
           </button>
+          {onExportGlb && (
+            <button
+              onClick={onExportGlb}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-studio-surface hover:bg-slate-700 border border-studio-border text-xs font-semibold text-indigo-300 hover:text-white transition-all"
+              title="Export 3D Garment (.GLB File)"
+            >
+              <Box className="w-3.5 h-3.5" />
+              .GLB
+            </button>
+          )}
+          {onExportTechPack && (
+            <button
+              onClick={onExportTechPack}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-studio-surface hover:bg-slate-700 border border-studio-border text-xs font-semibold text-emerald-300 hover:text-white transition-all"
+              title="Export Manufacturer Tech Pack Spec Sheet PNG"
+            >
+              <LayoutTemplate className="w-3.5 h-3.5" />
+              Tech Pack
+            </button>
+          )}
           <button
             onClick={onExportSpec}
             className="p-2 rounded-xl bg-studio-surface hover:bg-slate-700 border border-studio-border text-slate-300 hover:text-white transition-all"

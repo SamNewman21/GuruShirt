@@ -11,6 +11,11 @@ import {
 } from "@/types/studio";
 import { createGarmentGeometry } from "@/lib/garmentMeshes3D";
 import {
+  loadCustomGlbGeometry,
+  serializeGeometryToGlbBuffer,
+} from "@/lib/glbStudioEngine";
+import {
+  Box,
   MousePointerClick,
   Orbit,
   RefreshCw,
@@ -92,10 +97,48 @@ export default function Viewport3DStudio({
   const onUpdateLayerRef = useRef(onUpdateLayer);
   onUpdateLayerRef.current = onUpdateLayer;
 
-  const geometry = useMemo(
-    () => createGarmentGeometry(garment.garmentType),
-    [garment.garmentType]
+  const [customGeometry, setCustomGeometry] =
+    useState<THREE.BufferGeometry | null>(null);
+
+  useEffect(() => {
+    if (!garment.customGlbUrl) {
+      setCustomGeometry(null);
+      return;
+    }
+    let cancelled = false;
+    loadCustomGlbGeometry(garment.customGlbUrl)
+      .then((geom) => {
+        if (!cancelled) setCustomGeometry(geom);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomGeometry(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [garment.customGlbUrl]);
+
+  const proceduralGeometry = useMemo(
+    () => createGarmentGeometry(garment.garmentType, garment.fit),
+    [garment.garmentType, garment.fit]
   );
+
+  const geometry = customGeometry || proceduralGeometry;
+
+  const handleExportCurrentGlb = async () => {
+    const buf = await serializeGeometryToGlbBuffer(
+      geometry,
+      `GuruShirt_${garment.garmentType}`,
+      masterCanvas
+    );
+    const blob = new Blob([buf], { type: "model/gltf-binary" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = `gurushirt-${garment.garmentType}-3d.glb`;
+    link.href = url;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
 
   // Set 3D camera distance from a zoom multiplier (0.25 .. 2.5)
   const applyZoomLevel = (nextZoom: number) => {
@@ -412,6 +455,15 @@ export default function Viewport3DStudio({
               Orbit Camera
             </>
           )}
+        </button>
+
+        <button
+          onClick={handleExportCurrentGlb}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border bg-indigo-600/25 border-indigo-500/70 text-indigo-200 hover:bg-indigo-600/40 backdrop-blur-md transition-all"
+          title="Download this custom-tailored 3D garment with your graphics baked in as a standard .GLB 3D file"
+        >
+          <Box className="w-3.5 h-3.5" />
+          Export .GLB
         </button>
 
         <button

@@ -17,8 +17,11 @@ import {
 import { SAMPLE_MOTIFS } from "@/lib/sampleMotifs";
 import {
   renderMasterUVTexture,
+  renderTechPackSpecSheet,
   renderTextConfigToDataUrl,
 } from "@/lib/textureEngine";
+import { createGarmentGeometry } from "@/lib/garmentMeshes3D";
+import { serializeGeometryToGlbBuffer } from "@/lib/glbStudioEngine";
 import Canvas2DEditor from "@/components/Canvas2DEditor";
 import BottomToolDock from "@/components/BottomToolDock";
 import { Shirt } from "lucide-react";
@@ -632,6 +635,32 @@ export default function GuruShirtStudioPage() {
     a.click();
   };
 
+  const handleExportTechPack = () => {
+    if (!masterCanvas) return;
+    const url = renderTechPackSpecSheet(garment, layers, masterCanvas);
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gurushirt-${garment.garmentType}-tech-pack.png`;
+    a.click();
+  };
+
+  const handleExportGlb = async () => {
+    const geom = createGarmentGeometry(garment.garmentType, garment.fit);
+    const buf = await serializeGeometryToGlbBuffer(
+      geom,
+      `GuruShirt_${garment.garmentType}`,
+      masterCanvas
+    );
+    const blob = new Blob([buf], { type: "model/gltf-binary" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gurushirt-${garment.garmentType}-3d.glb`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
   // Global Keyboard Shortcuts (Undo, Redo, Delete, Arrow Nudge)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -791,6 +820,8 @@ export default function GuruShirtStudioPage() {
         onUndo={handleUndo}
         onRedo={handleRedo}
         onExportSpec={handleExportPatternPNG}
+        onExportGlb={handleExportGlb}
+        onExportTechPack={handleExportTechPack}
       />
     </div>
   );

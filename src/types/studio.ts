@@ -27,6 +27,28 @@ export type FabricType =
 
 export type BlendModeType = "source-over" | "multiply" | "screen" | "overlay";
 
+export type PrintFinishType =
+  | "screenprint"
+  | "puff-print"
+  | "embroidery"
+  | "vintage-cracked";
+
+export interface GarmentFitConfig {
+  bodyWidth: number; // 0.85 (Slim) .. 1.0 (Standard) .. 1.25 (Boxy Oversized)
+  bodyLength: number; // 0.82 (Cropped) .. 1.0 (Standard) .. 1.18 (Longline)
+  sleeveLength: number; // 0.72 (Short/Cap) .. 1.0 (Standard) .. 1.28 (Extended Drop)
+  collarWeight: number; // 0.75 (Fine Rib) .. 1.0 (Standard) .. 1.45 (Heavy Mock Rib)
+  drapeFolds: number; // 0.0 (Crisp Press) .. 0.5 (Natural) .. 1.0 (Heavy Street Drape)
+}
+
+export const DEFAULT_GARMENT_FIT: GarmentFitConfig = {
+  bodyWidth: 1.0,
+  bodyLength: 1.0,
+  sleeveLength: 1.0,
+  collarWeight: 1.0,
+  drapeFolds: 0.55,
+};
+
 export type CropShapeType =
   | "rect"
   | "circle"
@@ -93,6 +115,7 @@ export interface DesignLayer {
   removeBgTolerance: number; // 5..90
   textConfig?: TextLayerConfig;
   blendMode: BlendModeType;
+  printFinish?: PrintFinishType; // Phase 3: Screenprint, 3D Puff Print, Embroidery, Vintage Cracked
   multiplyPattern: MultiplyPatternConfig;
   crop: CropConfig;
 }
@@ -104,6 +127,9 @@ export interface GarmentState {
   fabric: FabricType;
   showSeams: boolean;
   showPrintGuides: boolean;
+  fit?: GarmentFitConfig;
+  customGlbUrl?: string;
+  customGlbName?: string;
 }
 
 export interface WardrobeItem {
